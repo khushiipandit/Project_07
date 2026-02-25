@@ -1,4 +1,6 @@
-import { useState, useRef } from "react";
+import API from "../api/api";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Topbar from "../components/Topbar";
 
@@ -16,7 +18,6 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
-
 function Dashboard() {
   // ADD BELOW YOUR EXISTING STATES (inside Dashboard function)
 
@@ -64,49 +65,129 @@ const handleAvatarUpload=(e)=>{
 
 const avatarInputRef = useRef(null);
 
-  const [activeSection, setActiveSection] = useState("overview");
 
-  const [tasks, setTasks] = useState([
-    { id:1, title: "React Assignment", deadline: "2026-03-01", completed: false, category: "Academics" },
-    { id:2, title: "Job Applications", deadline: "2026-02-28", completed: true, category: "Job Prep" },
-    { id:3, title: "Client Meeting", deadline: "2026-03-03", completed: false, category: "Client Work" },
-    { id:4, title: "Write Blog Post", deadline: "2026-03-05", completed: false, category: "Personal" },
-    { id:5, title: "Design Mockups", deadline: "2026-03-04", completed: true, category: "Client Work" },
-    { id:6, title: "Team Sync", deadline: "2026-02-27", completed: false, category: "Work" },
-    { id:7, title: "Refactor Codebase", deadline: "2026-03-10", completed: false, category: "Academics" },
-  ]);
+  const navigate = useNavigate();
+
+  const [activeSection, setActiveSection] = useState("overview");
+  const [tasks, setTasks] = useState([]);
+  const [search, setSearch] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+const [filterStatus, setFilterStatus] = useState("all");
+const [categoryFilter, setCategoryFilter] = useState("all");
+const [statusFilter, setStatusFilter] = useState("all");
+
+
+
+
+  // 👇 ADD THIS BLOCK HERE
+  useEffect(() => {
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/");
+    } else {
+      fetchTasks();
+    }
+
+  }, []);
 
   const [newTask,setNewTask]=useState("");
   const [newDeadline,setNewDeadline]=useState("");
+  const [newCategory,setNewCategory]=useState("Personal");
   const [editingTask,setEditingTask]=useState(null);
 
   // CRUD
 
-  const addTask=()=>{
-    if(!newTask.trim()) return;
-    setTasks([...tasks,{
-      id:Date.now(),
-      title:newTask,
-      deadline:newDeadline,
-      completed:false,
-      category:"Personal"
-    }]);
+ const addTask = async () => {
+
+  if (!newTask.trim()) return;
+
+  try {
+
+    const res = await API.post("/tasks", {
+      title: newTask,
+      deadline: newDeadline,
+      category: newCategory,
+    });
+
+    setTasks([...tasks, res.data]);
+
     setNewTask("");
     setNewDeadline("");
-  };
+    setNewCategory("Personal");
 
-  const deleteTask=id=>{
-    setTasks(tasks.filter(t=>t.id!==id));
-  };
+  } catch (err) {
+    console.error(err);
+  }
+};
 
-  const toggleComplete=id=>{
-    setTasks(tasks.map(t=>t.id===id?{...t,completed:!t.completed}:t));
-  };
+  const deleteTask = async (id) => {
 
-  const saveEdit=(id,title,deadline)=>{
-    setTasks(tasks.map(t=>t.id===id?{...t,title,deadline}:t));
+  try {
+
+    await API.delete(`/tasks/${id}`);
+
+    setTasks(tasks.filter(t => t._id !== id));
+
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+ const toggleComplete = async (task) => {
+
+  try {
+
+    const res = await API.put(`/tasks/${task._id}`, {
+      ...task,
+      completed: !task.completed,
+    });
+
+    setTasks(tasks.map(t => 
+      t._id === task._id ? res.data : t
+    ));
+
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+const saveEdit = async (id, title, deadline, completed, category) => {
+
+  try {
+
+    const token = localStorage.getItem("token");
+
+    // ⭐ 1. Instant UI update (Notion-style)
+    setTasks(prev =>
+      prev.map(task =>
+        task._id === id
+          ? { ...task, title, deadline, completed, category }
+          : task
+      )
+    );
+
+    // ⭐ 2. Update backend database
+    await API.put(
+      `/tasks/${id}`,
+      { title, deadline, completed, category },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    // ⭐ close edit panel
     setEditingTask(null);
-  };
+
+  } catch (err) {
+
+    console.error("Edit failed:", err);
+
+  }
+};
 
   // OVERVIEW DATA
 
@@ -132,6 +213,18 @@ const avatarInputRef = useRef(null);
     day:`T${i+1}`,
     completed:t.completed?1:0
   }));
+
+
+
+const fetchTasks = async () => {
+  try {
+    const { data } = await API.get("/tasks");
+    setTasks(data);
+  } catch (error) {
+    console.log("Error fetching tasks:", error);
+  }
+};
+
 
   const renderContent=()=>{
 
@@ -159,7 +252,7 @@ const avatarInputRef = useRef(null);
 
           <div className="grid grid-cols-2 gap-8">
 
-            <div className="bg-white p-6 rounded-2xl shadow-md">
+            <div className="bg-white p-6 rounded-2xl shadow-md h-[350px]">
               <h3>Tasks by Category</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={categoryData}>
@@ -206,6 +299,42 @@ const avatarInputRef = useRef(null);
       return(
         <>
           <h1 className="text-3xl font-bold mb-6">Tasks</h1>
+          <div className="flex gap-4 mb-6 flex-wrap">
+
+  {/* Search */}
+  <input
+    type="text"
+    placeholder="Search tasks..."
+    value={search}
+    onChange={(e)=>setSearch(e.target.value)}
+    className="border p-2 rounded-lg"
+  />
+
+  {/* Category Filter */}
+  <select
+    value={categoryFilter}
+    onChange={(e)=>setCategoryFilter(e.target.value)}
+    className="border p-2 rounded-lg"
+  >
+    <option value="all">All Categories</option>
+    <option value="Academics">Academics</option>
+    <option value="Job Prep">Job Prep</option>
+    <option value="Client Work">Client Work</option>
+    <option value="Personal">Personal</option>
+  </select>
+
+  {/* Status Filter */}
+  <select
+    value={statusFilter}
+    onChange={(e)=>setStatusFilter(e.target.value)}
+    className="border p-2 rounded-lg"
+  >
+    <option value="all">All Status</option>
+    <option value="completed">Completed</option>
+    <option value="pending">Pending</option>
+  </select>
+
+</div>
 
           {/* ADD TASK */}
           <div className="flex gap-4 mb-6">
@@ -217,6 +346,16 @@ const avatarInputRef = useRef(null);
               value={newDeadline}
               onChange={e=>setNewDeadline(e.target.value)}
               className="border p-2 rounded-lg"/>
+            <select
+              value={newCategory}
+              onChange={e=>setNewCategory(e.target.value)}
+              className="border p-2 rounded-lg"
+            >
+              <option value="Academics">Academics</option>
+              <option value="Job Prep">Job Prep</option>
+              <option value="Client Work">Client Work</option>
+              <option value="Personal">Personal</option>
+            </select>
             <button onClick={addTask}
               className="bg-blue-600 text-white px-4 rounded-lg">
               Add Task
@@ -224,33 +363,59 @@ const avatarInputRef = useRef(null);
           </div>
 
           {/* TASK LIST */}
-          {tasks.map(task=>{
+          {filteredTasks.map(task=>{
 
             const isDelayed = !task.completed && task.deadline && new Date(task.deadline) < new Date();
 
             return(
-              <div key={task.id} className="bg-white p-4 rounded-xl mb-4 shadow">
+              <div key={task._id} className={`p-4 rounded-xl mb-4 shadow ${task.completed ? 'bg-green-100' : 'bg-white'}`}>
 
                 <div className="flex justify-between items-center">
                   <div>
                     <p className={`font-semibold ${task.completed?"line-through":""}`}>
                       {task.title}
                     </p>
-                    <p className="text-sm text-gray-500">
-                      Deadline: {task.deadline || "N/A"} |
-                      Status: {task.completed?"Completed": isDelayed?"Delayed":"Pending"}
-                    </p>
+                    <div className="flex items-center gap-3 text-sm">
+
+  <span className="text-gray-500">
+    Deadline: {task.deadline || "N/A"}
+  </span>
+
+  <span className="text-gray-500">
+    Category: {task.category || "Personal"}
+  </span>
+
+  {/* Status Badge */}
+  <span className={`px-3 py-1 rounded-full text-xs font-semibold
+    ${
+      task.completed
+        ? "bg-green-100 text-green-700"
+        : task.deadline && new Date(task.deadline) < new Date()
+        ? "bg-red-100 text-red-700"
+        : "bg-yellow-100 text-yellow-700"
+    }`}
+  >
+    {
+      task.completed
+        ? "Completed"
+        : task.deadline && new Date(task.deadline) < new Date()
+        ? "Delayed"
+        : "Pending"
+    }
+  </span>
+
+</div>
                   </div>
 
                   <div className="flex gap-2">
-                    <button onClick={()=>toggleComplete(task.id)}>✓</button>
-                    <button onClick={()=>setEditingTask(task.id)}>Edit</button>
-                    <button onClick={()=>deleteTask(task.id)}>Delete</button>
+                    <button onClick={()=>toggleComplete(task._id)} className="px-2 py-1 bg-gray-200 rounded">✓</button>
+                    <button onClick={()=>setEditingTask(task._id)} className="px-3 py-1 bg-green-500 text-white rounded">Edit</button>
+                    <button onClick={()=>deleteTask(task._id)} className="px-3 py-1 bg-blue-500 text-white rounded">Delete</button>
                   </div>
                 </div>
 
                 {/* EXPAND EDIT PANEL */}
-                {editingTask===task.id && (
+                {editingTask===task._id && (
                   <EditPanel task={task} saveEdit={saveEdit}/>
                 )}
 
@@ -441,14 +606,31 @@ const avatarInputRef = useRef(null);
   );
 }
   };
+const filteredTasks = tasks.filter(task => {
+  const matchesSearch =
+    task.title.toLowerCase().includes(search.toLowerCase());
+
+  const matchesCategory =
+    categoryFilter === "all" ||
+    task.category === categoryFilter;
+
+  const matchesStatus =
+    statusFilter === "all" ||
+    (statusFilter === "completed" && task.completed) ||
+    (statusFilter === "pending" && !task.completed);
+
+  return matchesSearch && matchesCategory && matchesStatus;
+});
 
   return (
-    <div className="min-h-screen bg-gray-200">
+    <div className="min-h-screen bg-gray-200 flex">
       <Sidebar setActiveSection={setActiveSection}/>
-      <Topbar/>
-      <div className="ml-64 p-10">
-        <div className="bg-gradient-to-b from-blue-200 via-blue-100 to-indigo-200 rounded-3xl p-10 shadow-inner">
-          {renderContent()}
+      <div className="flex-1">
+        <Topbar/>
+        <div className="p-10">
+          <div className="bg-gradient-to-b from-blue-200 via-blue-100 to-indigo-200 rounded-3xl p-10 shadow-inner">
+            {renderContent()}
+          </div>
         </div>
       </div>
     </div>
@@ -459,12 +641,28 @@ function EditPanel({task,saveEdit}){
 
   const [title,setTitle]=useState(task.title);
   const [deadline,setDeadline]=useState(task.deadline);
+  const [completed,setCompleted]=useState(task.completed);
+  const [category,setCategory]=useState(task.category || "Personal");
 
   return(
     <div className="mt-4 p-4 border rounded-xl bg-gray-50">
-      <input value={title} onChange={e=>setTitle(e.target.value)} className="border p-2 mr-2"/>
+      <input value={title} onChange={e=>setTitle(e.target.value)} className="border p-2 mr-2" placeholder="Title"/>
       <input type="date" value={deadline} onChange={e=>setDeadline(e.target.value)} className="border p-2 mr-2"/>
-      <button onClick={()=>saveEdit(task.id,title,deadline)} className="bg-green-500 text-white px-3 py-1 rounded">Save</button>
+      <select
+        value={category}
+        onChange={e=>setCategory(e.target.value)}
+        className="border p-2 mr-2"
+      >
+        <option value="Academics">Academics</option>
+        <option value="Job Prep">Job Prep</option>
+        <option value="Client Work">Client Work</option>
+        <option value="Personal">Personal</option>
+      </select>
+      <label className="mr-2">
+        <input type="checkbox" checked={completed} onChange={e=>setCompleted(e.target.checked)} className="mr-1"/>
+        Completed
+      </label>
+      <button onClick={()=>saveEdit(task._id,title,deadline,completed,category)} className="bg-green-500 text-white px-3 py-1 rounded">Save</button>
     </div>
   );
 }

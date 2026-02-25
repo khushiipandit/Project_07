@@ -1,6 +1,6 @@
-function Topbar() {
+function Topbar({ setActiveSection }) {
   return (
-    <div className="ml-64 bg-white border-b border-gray-200 p-5 flex justify-between items-center shadow-sm">
+    <div className="bg-gradient-to-r from-blue-200 to-indigo-200 border-b border-gray-200 p-5 flex justify-between items-center shadow-sm">
 
       <h2 className="text-xl font-semibold text-gray-800">
         Welcome back 👋
@@ -8,12 +8,11 @@ function Topbar() {
 
       <div className="flex items-center gap-4">
 
-        <div className="w-9 h-9 bg-blue-100 border border-blue-400 rounded-full flex items-center justify-center text-blue-600 font-semibold">
+        <button
+          onClick={() => setActiveSection("profile")}
+          className="w-9 h-9 bg-blue-100 border border-blue-400 rounded-full flex items-center justify-center text-blue-600 font-semibold hover:bg-blue-200 transition cursor-pointer"
+        >
           K
-        </div>
-
-        <button className="bg-blue-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600 transition">
-          Logout
         </button>
 
       </div>
